@@ -1,17 +1,15 @@
 package com.project.wordsearch.service;
 
-import com.project.wordsearch.model.Direction;
-import com.project.wordsearch.model.Word;
+import com.project.wordsearch.model.User;
 import com.project.wordsearch.model.WordSearch;
 import com.project.wordsearch.repository.WordSearchRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-
-import static com.project.wordsearch.model.Direction.*;
 
 @Service
 public class WordSearchService {
@@ -22,6 +20,9 @@ public class WordSearchService {
     public WordSearchService(WordSearchRepository wordSearchRepository) {
         this.wordSearchRepository = wordSearchRepository;
     }
+
+    @Autowired
+    public UserService userService;
 
     public List<WordSearch> getAllWordSearches() {
         return wordSearchRepository.findAll();
@@ -47,100 +48,126 @@ public class WordSearchService {
         return false;
     }
 
-    public WordSearch createWordSearch(WordSearch wordSearch) {
-        // Geração da grade do caça-palavras
-        String grid = generateGrid(wordSearch.getWords());
-        wordSearch.setGrid(grid);
+    /**
+     * Creates a new word search puzzle with the specified name, words, and teacher ID.
+     */
+    public WordSearch createWordSearch(String name, List<String> words, Long teacherId) {
+        User teacher = userService.getUserById(teacherId);
+        WordSearch wordSearch = new WordSearch();
+        wordSearch.setName(name);
+        wordSearch.setTeacher(teacher);
+        wordSearch.setWords(words);
 
-        return wordSearchRepository.save(wordSearch);
+        String grid = generateGrid(words);
+        wordSearch.setGrid(grid);
+        wordSearch.setCreatedAt(LocalDateTime.now());
+        wordSearchRepository.save(wordSearch);
+
+        return wordSearch;
     }
 
-    private String generateGrid(List<Word> words) {
-        int size = 10; // Tamanho fixo da grade, pode ser parametrizado
+    /**
+     * Generates a word search grid by placing the given words randomly within a 10x10 grid.
+     */
+    public String generateGrid(List<String> words) {
+        int size = 10; // Grid size
         char[][] grid = new char[size][size];
-
-        // Inicializa a grade com espaços em branco
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                grid[i][j] = ' ';
-            }
-        }
-
         Random random = new Random();
 
-        for (Word word : words) {
-            boolean placed = false;
-            while (!placed) {
-                Direction direction = Direction.values()[random.nextInt(Direction.values().length)];
+        // Initialize the grid with '0' to represent empty spaces
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                grid[i][j] = '0';
+            }
+        }
+
+        // Insert each word into the grid
+        for (String word : words) {
+            boolean inserted = false;
+            int attempts = 0;
+
+            // Try to place the word until successful or attempts exceed the limit
+            while (!inserted && attempts < 100) {
                 int row = random.nextInt(size);
                 int col = random.nextInt(size);
+                String direction = random.nextBoolean() ? "horizontal" : "vertical";
 
-                if (canPlaceWord(grid, word.getText(), row, col, direction)) {
-                    placeWord(grid, word.getText(), row, col, direction);
-                    word.setDirection(Direction.valueOf(direction.name())); // Armazena a direção
-                    placed = true;
+                if (direction.equals("horizontal") && col + word.length() <= size) {
+                    if (isSpaceAvailable(grid, word, row, col, "horizontal")) {
+                        placeWord(grid, word, row, col, "horizontal");
+                        inserted = true;
+                    }
+                } else if (direction.equals("vertical") && row + word.length() <= size) {
+                    if (isSpaceAvailable(grid, word, row, col, "vertical")) {
+                        placeWord(grid, word, row, col, "vertical");
+                        inserted = true;
+                    }
+                }
+                attempts++;
+            }
+            if (!inserted) {
+                System.out.println("Failed to place word: " + word);
+            }
+        }
+
+        // Fill the remaining empty spaces with random letters
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                if (grid[i][j] == '0') {
+                    grid[i][j] = (char) ('A' + random.nextInt(26));
                 }
             }
         }
 
-        return gridToString(grid);
+        // Convert the final grid to a string and return it
+        String finalGrid = gridToString(grid);
+        System.out.println(finalGrid);
+        return finalGrid;
     }
 
-    private boolean canPlaceWord(char[][] grid, String word, int row, int col, Direction direction) {
-        int size = grid.length;
-        int wordLength = word.length();
-
-        switch (direction) {
-            case HORIZONTAL:
-                if (col + wordLength > size) return false;
-                for (int i = 0; i < wordLength; i++) {
-                    if (grid[row][col + i] != ' ') return false;
+    /**
+     * Checks if there is enough space to place a word in the grid.
+     */
+    private boolean isSpaceAvailable(char[][] grid, String word, int row, int col, String direction) {
+        if (direction.equals("horizontal")) {
+            for (int i = 0; i < word.length(); i++) {
+                if (grid[row][col + i] != '0' && grid[row][col + i] != word.charAt(i)) {
+                    return false;
                 }
-                break;
-            case VERTICAL:
-                if (row + wordLength > size) return false;
-                for (int i = 0; i < wordLength; i++) {
-                    if (grid[row + i][col] != ' ') return false;
+            }
+        } else { // Vertical
+            for (int i = 0; i < word.length(); i++) {
+                if (grid[row + i][col] != '0' && grid[row + i][col] != word.charAt(i)) {
+                    return false;
                 }
-                break;
-            case DIAGONAL:
-                if (row + wordLength > size || col + wordLength > size) return false;
-                for (int i = 0; i < wordLength; i++) {
-                    if (grid[row + i][col + i] != ' ') return false;
-                }
-                break;
+            }
         }
-
         return true;
     }
 
-    private void placeWord(char[][] grid, String word, int row, int col, Direction direction) {
-        int size = grid.length;
-
-        switch (direction) {
-            case HORIZONTAL:
-                for (int i = 0; i < word.length(); i++) {
-                    grid[row][col + i] = word.charAt(i);
-                }
-                break;
-            case VERTICAL:
-                for (int i = 0; i < word.length(); i++) {
-                    grid[row + i][col] = word.charAt(i);
-                }
-                break;
-            case DIAGONAL:
-                for (int i = 0; i < word.length(); i++) {
-                    grid[row + i][col + i] = word.charAt(i);
-                }
-                break;
+    /**
+     * Places a word into the grid at the specified starting position and direction.
+     */
+    private void placeWord(char[][] grid, String word, int row, int col, String direction) {
+        if (direction.equals("horizontal")) {
+            for (int i = 0; i < word.length(); i++) {
+                grid[row][col + i] = word.charAt(i);
+            }
+        } else { // Vertical
+            for (int i = 0; i < word.length(); i++) {
+                grid[row + i][col] = word.charAt(i);
+            }
         }
     }
 
+    /**
+     * Converts the grid array into a string representation.
+     */
     private String gridToString(char[][] grid) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < grid.length; i++) {
-            for (int j = 0; j < grid[i].length; j++) {
-                sb.append(grid[i][j]);
+        for (char[] row : grid) {
+            for (char cell : row) {
+                sb.append(cell);
             }
             sb.append("\n");
         }

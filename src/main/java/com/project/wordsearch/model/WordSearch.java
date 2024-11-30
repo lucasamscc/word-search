@@ -1,6 +1,5 @@
 package com.project.wordsearch.model;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -26,9 +25,10 @@ public class WordSearch {
     @Column(name = "grid", columnDefinition = "TEXT", nullable = false)
     private String grid;
 
-    @OneToMany(mappedBy = "wordSearch", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
-    private List<Word> words;
+    @ElementCollection
+    @CollectionTable(name = "word_search_words", joinColumns = @JoinColumn(name = "word_search_id"))
+    @Column(name = "word")
+    private List<String> words;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
