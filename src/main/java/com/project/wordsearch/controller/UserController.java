@@ -1,5 +1,6 @@
 package com.project.wordsearch.controller;
 
+import com.project.wordsearch.dto.LoginRequest;
 import com.project.wordsearch.model.User;
 import com.project.wordsearch.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,4 +44,25 @@ public class UserController {
         }
         return ResponseEntity.ok(updatedUser);
     }
+
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
+        String email = loginRequest.getEmail();
+        String password = loginRequest.getPassword();
+
+        // Verifica se o usuário existe
+        User user = userService.getUserByEmail(email);
+        if (user == null) {
+            return new ResponseEntity<>("Usuário não encontrado", HttpStatus.NOT_FOUND);
+        }
+
+        // Verifica se a senha está correta
+        if (!user.getPassword().equals(password)) {
+            return new ResponseEntity<>("Senha incorreta", HttpStatus.UNAUTHORIZED);
+        }
+
+        // Retorna as informações do usuário (como role, nome, etc.) no caso de sucesso
+        return ResponseEntity.ok(user);
+    }
+
 }
